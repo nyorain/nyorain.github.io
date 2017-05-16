@@ -75,10 +75,9 @@ really naturally like normal branching - just at compile time.
 On the downside though, it is not extendable from the ouside like template specialization
 would be but in many cases this is not needed anyways (or maybe explicitly not wanted).</p>
 
-<!-- <h2 id="expressionvalidexpr-args"><code>expressionValid&lt;Expr, Args...&gt; ?</code></h2> -->
-<h2 id="expressionvalidexpr-args">expressionValid&lt;Expr, Args...&gt;</h2>
+<h2 id="expressionvalidexpr-args">validExpression&lt;Expr, Args...&gt;</h2>
 
-<p>As promised, let's inspect expressionValid<Expr, Args...> more closely.
+<p>As promised, let's inspect expressionValid&lt;Expr, Args...&lt; more closely.
 To be honest, there is absolutely nothing magical about it, it just uses the default
 <code>SFINAE</code> construct to check if the given type(-expression) is valid.
 But using it amazes me everytime, since it strips away the need to write all the boring
