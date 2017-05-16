@@ -11,7 +11,7 @@ main {
 	margin: 0 auto;
 	max-width: 55em;
 	/*min-width: 45em;*/
-  	padding: 2em;
+  	padding: 1em;
 }
 
 header {
@@ -26,10 +26,6 @@ header {
 	border-bottom: 2px solid #6699e0;
 	/*min-width: 45em;*/
 	color: #ccc;
-}
-
-h1 {
-	font-size: 3em;
 }
 
 h1, h2 {
@@ -67,7 +63,7 @@ a {
 
 header h1 {
 	color: #fff;
-	font-size: 4em;
+	/* font-size: 4em; */
 	font-weight: 400;
 	text-shadow: 2px 1px #333333;
 }
