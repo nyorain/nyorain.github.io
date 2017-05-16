@@ -19,7 +19,7 @@ header {
 	background-position: 50% 60%;
 	background-repeat: no-repeat;
 	background-size: cover;
-	padding: 15vh 2em;
+	padding: 12vh 2em;
 	text-align: center;
 	border-bottom: 2px solid #6699e0;
 	color: #ccc;
@@ -60,7 +60,6 @@ a {
 
 header h1 {
 	color: #fff;
-	/* font-size: 4em; */
 	font-weight: 400;
 	text-shadow: 2px 1px #333333;
 }
