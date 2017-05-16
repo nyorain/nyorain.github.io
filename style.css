@@ -16,7 +16,7 @@ main {
 header {
 	background-color: #111144;
 	background-image: url("header-forest.jpg");
-	background-position: 50% 60%;
+	background-position: 50% 72%;
 	background-repeat: no-repeat;
 	background-size: cover;
 	padding-left: 2em;
@@ -65,7 +65,7 @@ header h1 {
 	color: #fff;
 	font-weight: 400;
 	text-shadow: 2px 1px #333333;
-	font-size: 6vmin;
+	font-size: calc(1.5em + 2vh);
 }
 
 
