@@ -1,0 +1,182 @@
+<html>
+
+<head>
+	<link rel="stylesheet" type="text/css" href="style.css">
+</head>
+
+<body>
+
+<header>
+	<h1 id="expression-checking-at-compile-time-modern-c">Expression checking at compile time - Modern C++</h1>
+	<p><em>Tuesday, 16.05.2017</em><br/>
+	<em>by nyorain</em></p>
+</header>
+
+<main>
+
+<p>Today, you have to write a C++ template function that does something
+based on the capabilities of the type it is instanciated with.
+Let’s consider the following example:</p>
+
+
+<pre class="prettyprint"><code class="language-cpp hljs "><span class="hljs-comment">/// Prints the given obj to std::cout.</span>
+<span class="hljs-comment">/// If available, uses operator&lt;&lt;(ostream&amp;, const T&amp;).</span>
+<span class="hljs-comment">/// Otherwise tries obj.to_string() and to_string(obj). </span>
+<span class="hljs-comment">/// Results in a compile-time error if none of the above is available.</span>
+<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span> T&gt; <span class="hljs-keyword">void</span> print(<span class="hljs-keyword">const</span> T&amp; obj);</code></pre>
+
+<p>In some other languages this could be done with reflection or something similar
+but in C++ we have something more poweful: template meta programming.
+But how to actually implement it? We want to switch the implementation based on the
+functionality the type offers.
+Although the given example is probably not the most useful one, this is a common scenario.</p>
+
+<p>Trying to find an implementation using the usual template specialization
+mechanisms I came to the conclusion that there is no possibility to get this
+right without any pain. There is no way to not make this really
+ugly, error-prone and hard to read as well as using a reasonable
+number of lines (at least this is my conclusion, if you find a good
+solution and want to make me feel bad about writing bad introductions, tell me!).
+The task isn’t that hard in the end is it?</p>
+
+<p>Combining C++17’s new <code>constexpr if</code> with the beauty of <code>std::declval</code> and
+<code>decltype</code>, while also adding two (upon closer inspection really
+insignificant) little bits of magic named <code>validExpression&lt;Expr, Args...&gt;</code> and <code>templatize&lt;T&gt;</code> to
+the mix, we can achieve this in a really compact and readable manner:</p>
+
+
+
+<pre class="prettyprint"><code class="language-cpp hljs "><span class="hljs-comment">// Expressions to test validity wrapped into typedefs using decltype</span>
+<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span> T&gt; <span class="hljs-keyword">using</span> Ostream = decltypeg(<span class="hljs-built_in">std</span>::<span class="hljs-built_in">cout</span> &lt;&lt; <span class="hljs-built_in">std</span>::declval&lt;T&gt;());
+<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span> T&gt; <span class="hljs-keyword">using</span> Member = <span class="hljs-keyword">decltype</span>(<span class="hljs-built_in">std</span>::<span class="hljs-built_in">cout</span> &lt;&lt; <span class="hljs-built_in">std</span>::declval&lt;T&gt;().to_string());
+<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span> T&gt; <span class="hljs-keyword">using</span> Free = <span class="hljs-keyword">decltype</span>(<span class="hljs-built_in">std</span>::<span class="hljs-built_in">cout</span> &lt;&lt; to_string(<span class="hljs-built_in">std</span>::declval&lt;T&gt;()));
+
+<span class="hljs-comment">// The implementation</span>
+<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span> T&gt;
+<span class="hljs-keyword">void</span> print(<span class="hljs-keyword">const</span> T&amp; obj) {
+    <span class="hljs-keyword">if</span> <span class="hljs-keyword">constexpr</span>(validExpression&lt;Ostream, T&gt;)
+        <span class="hljs-built_in">std</span>::<span class="hljs-built_in">cout</span> &lt;&lt; obj;
+    <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> <span class="hljs-keyword">constexpr</span>(validExpression&lt;Member, T&gt;)
+        <span class="hljs-built_in">std</span>::<span class="hljs-built_in">cout</span> &lt;&lt; obj.to_string();
+    <span class="hljs-keyword">else</span> <span class="hljs-keyword">if</span> <span class="hljs-keyword">constexpr</span>(validExpression&lt;Free, T&gt;)
+        <span class="hljs-built_in">std</span>::<span class="hljs-built_in">cout</span> &lt;&lt; to_string(obj);
+    <span class="hljs-keyword">else</span> <span class="hljs-keyword">static_assert</span>(templatize&lt;T&gt;(<span class="hljs-keyword">false</span>), <span class="hljs-string">"T is not printable!"</span>);
+}</code></pre>
+
+<p>The implementation above works exactly as specified, but implements everything
+explicitly in one function, specifies an order in which possible candidates may be chosen
+and outputs a custom error message at compile-time using static_assert when nothing works.
+As mentiod above, to achieve exactly this with template specialization would result
+in various problems. The declarative style of template specializations
+makes it hard to handle corner cases, like e.g. the type has an <code>operator&lt;&lt;</code>
+overload <strong>and</strong> a <code>to_string()</code> member.</p>
+
+<p>This way of switching between the possible implementation candidates can be read and written
+really naturally like normal branching - just at compile time.
+On the downside though, it is not extendable from the ouside like template specialization
+would be but in many cases this is not needed anyways (or maybe explicitly not wanted).</p>
+
+<!-- <h2 id="expressionvalidexpr-args"><code>expressionValid&lt;Expr, Args...&gt; ?</code></h2> -->
+<h2 id="expressionvalidexpr-args">expressionValid&lt;Expr, Args...&gt; ?</h2>
+
+<p>As promised, let's inspect expressionValid<Expr, Args...> more closely.
+To be honest, there is absolutely nothing magical about it, it just uses the default
+<code>SFINAE</code> construct to check if the given type(-expression) is valid.
+But using it amazes me everytime, since it strips away the need to write all the boring
+boiler plate and instead lets us test super easily at compile time if a
+given expression (or in this case: typedef, but this can be used to check for expressions
+via decltype) is valid. This shows again the true power of template meta programming
+in C++. Is there any other major language that allows this (I don't mean simply running a parser
+at runtime)?</p>
+
+<p>I actually feel a bit ashamed that this post is mainly about 10 lines of code:</p>
+
+<pre class="prettyprint"><code class="language-cpp hljs "><span class="hljs-comment">// Not-so-important helpers</span>
+<span class="hljs-keyword">namespace</span> detail {
+    <span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">class</span>...&gt; <span class="hljs-keyword">typename</span> E, <span class="hljs-keyword">typename</span> C, <span class="hljs-keyword">typename</span>... T&gt;
+    <span class="hljs-keyword">struct</span> ValidExpressionT
+        : <span class="hljs-keyword">public</span> <span class="hljs-built_in">std</span>::false_type {};
+
+    <span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">class</span>...&gt; <span class="hljs-keyword">typename</span> E, <span class="hljs-keyword">typename</span>... T&gt;
+    <span class="hljs-keyword">struct</span> ValidExpressionT&lt;E, <span class="hljs-built_in">std</span>::void_t&lt;E&lt;T...&gt;&gt;, T...&gt;
+        : <span class="hljs-keyword">public</span> <span class="hljs-built_in">std</span>::true_type {};
+}
+
+<span class="hljs-comment">// The final templated boolean</span>
+<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span>...&gt; <span class="hljs-keyword">typename</span> Expr, <span class="hljs-keyword">typename</span>... Args&gt;
+<span class="hljs-keyword">constexpr</span> <span class="hljs-keyword">auto</span> validExpression = detail::ValidExpressionT&lt;Expr, <span class="hljs-keyword">void</span>, Args...&gt;::value;</code></pre>
+
+<p>So <code>Expr</code> is a templated typedef you pass in, that will be instanciated with
+the given variadic <code>Args...</code>. The validExpression value will be true if <code>Expr</code>
+can be evaulated when instanciated with <code>Args...</code> or false if not.
+Of course this cannot be used to detect syntax-errors or check for non-templated
+expressions like <code>foo(5); // valid call?</code>, but they are different and not
+nearly as interesting. We don’t actually know at the time of writing the code which expressions
+for a given template type are valid and which are not, while we (at least theoretically) know
+it for non-templated function and objects.
+
+<p>The <code>templatize&lt;T&gt;</code> utility used is even more mundane, but can still
+be really useful at times:</p>
+
+
+
+<pre class="prettyprint"><code class="language-cpp hljs "><span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span> T, <span class="hljs-keyword">typename</span> O&gt;
+<span class="hljs-keyword">constexpr</span> <span class="hljs-keyword">decltype</span>(<span class="hljs-keyword">auto</span>) templatize(O&amp;&amp; value)
+    { <span class="hljs-keyword">return</span> <span class="hljs-built_in">std</span>::forward&lt;O&gt;(value); }</code></pre>
+
+<p>Really? A function that just returns its argument and takes an additional,
+useless template parameter? Yep. <br/>
+This makes sure the given value is evaluated only when the template is instanciated,
+i.e. postponing it to the second phase of two-phase-lookup.
+In this case it makes sure that the static_assert only really fails when
+our constexpr branches reach the last case. There are other hacks
+(stuff I probably don’t want to see anywhere as well as maybe interesting
+use cases) that can be done with this utility, it is all about changing the time
+at which the compiler is required or able to evaluate expressions.</p>
+
+
+
+<h2 id="meta-programming-unit-testing">Meta-programming unit testing</h2>
+
+<p>Is this actually a thing? Have you ever written unit tests that run fully at compile time?
+When writing unit tests on some small linear algebra templates in C++ I thought about
+how to assure that expressions <strong>don’t</strong> compile.
+The same way I want that <code>Vec3f{} + Vec3f{}</code> compiles and has the correct semantics, I
+want to make sure <code>Vec3f{} + Mat4f{}</code> does never compile, since that would not make any
+sense (but happens faster than think when working with template operators).</p>
+
+<p>With the little <em>magic</em> above this is super easy:</p>
+
+
+
+<pre class="prettyprint"><code class="language-cpp hljs "><span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span> A, <span class="hljs-keyword">typename</span> B&gt; <span class="hljs-keyword">using</span> Add = <span class="hljs-keyword">decltype</span>(<span class="hljs-built_in">std</span>::declval&lt;A&gt;() + <span class="hljs-built_in">std</span>::declval&lt;B&gt;());
+
+<span class="hljs-keyword">static_assert</span>(validExpression&lt;Add, Vec3f, Vec3f&gt;);
+<span class="hljs-keyword">static_assert</span>(!validExpression&lt;Add, Vec3f, Mat4f&gt;);</code></pre>
+
+<p>That's it. The unit test will fail at compile time if someone thinks it would be a good
+idea to implement <code>operator+</code> for vector and matrix or gets so tangled up in some
+templated operators that this would actually compile to some weird bullshit.</p>
+
+<br />
+<hr />
+<br />
+
+<p>Just started to explain things to people they already know or wasting their
+time with boring stuff they don’t want to know, so I really appreciate
+all feedback (and discussion).
+If you spent your last 5 or 10 minutes reading something extremely stupid with lots of
+spleling mistakes or wasting your time with something absolutely mundane, waiting for this
+idiot to finally come to and end… – make the time worth it and let
+me know: <a href="mailto:nyorain@gmail.com">nyorain@gmail.com</a></p>
+
+<p>The code (for validExpression as well as the linear algebra example) is actually
+taken from <a href="https://github.com/nyorain/nytl">https://github.com/nyorain/nytl</a></p>
+
+<p> "Oh god, just another blog post about programming that uses a totally unrelated and
+not even beautiful picture in its header. Booooring!"
+Actually, the picture is beautiful and is the second result when searching for
+<code>meta</code> on <a href="https://pixabay.com">pixabay</a>, so fuck you!</p>
+
+</main>
+</body>
