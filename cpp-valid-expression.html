@@ -104,14 +104,14 @@ at runtime)?</p>
 <span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">template</span>&lt;<span class="hljs-keyword">typename</span>...&gt; <span class="hljs-keyword">typename</span> Expr, <span class="hljs-keyword">typename</span>... Args&gt;
 <span class="hljs-keyword">constexpr</span> <span class="hljs-keyword">auto</span> validExpression = detail::ValidExpressionT&lt;Expr, <span class="hljs-keyword">void</span>, Args...&gt;::value;</code></pre>
 
-<p>So <code>Expr</code> is a templated typedef you pass in, that will be instanciated with
+<p>So <code>Expr</code> is a templated typedef that will be instanciated with
 the given variadic <code>Args...</code>. The validExpression value will be true if <code>Expr</code>
-can be evaulated when instanciated with <code>Args...</code> or false if not.
+with <code>Args...</code> can be evaluated or false if not.
 Of course this cannot be used to detect syntax-errors or check for non-templated
-expressions like <code>foo(5); // valid call?</code>, but they are different and not
+expressions like <code>foo(5); // valid call?</code>, but these are different cases and not
 nearly as interesting. We don’t actually know at the time of writing the code which expressions
-for a given template type are valid and which are not, while we (at least theoretically) know
-it for non-templated function and objects.
+for a given template type are valid and which are not, while we (at least theoretically) should know
+it for non-templated functions and objects.
 
 <p>The <code>templatize&lt;T&gt;</code> utility used is even more mundane, but can still
 be really useful at times:</p>
