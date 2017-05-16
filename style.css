@@ -20,8 +20,9 @@ header {
 	background-repeat: no-repeat;
 	background-size: cover;
 	padding-left: 2em;
+	padding-right: 2em;
 	padding-top: 8vh;
-	padding-bottom: 12vh;
+	padding-bottom: 16vh;
 	text-align: center;
 	border-bottom: 2px solid #6699e0;
 	color: #ccc;
