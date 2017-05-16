@@ -16,13 +16,13 @@ main {
 header {
 	background-color: #111144;
 	background-image: url("header-forest.jpg");
-	background-position: 50% 62%;
+	background-position: 50% 60%;
 	background-repeat: no-repeat;
 	background-size: cover;
 	padding-left: 2em;
 	padding-right: 2em;
 	padding-top: 5vh;
-	padding-bottom: 15vh;
+	padding-bottom: 10vh;
 	text-align: center;
 	border-bottom: 2px solid #6699e0;
 	color: #ccc;
