@@ -65,7 +65,7 @@ the mix, we can achieve this in a really compact and readable manner:</p>
 <p>The implementation above works exactly as specified, but implements everything
 explicitly in one function, specifies an order in which possible candidates may be chosen
 and outputs a custom error message at compile-time using static_assert when nothing works.
-As mentiod above, to achieve exactly this with template specialization would result
+As mentioned above, trying to achieve exactly this with template specialization would result
 in various problems. The declarative style of template specializations
 makes it hard to handle corner cases, like e.g. the type has an <code>operator&lt;&lt;</code>
 overload <strong>and</strong> a <code>to_string()</code> member.</p>
@@ -80,7 +80,7 @@ would be but in many cases this is not needed anyways (or maybe explicitly not w
 <p>As promised, let's inspect validExpression&lt;Expr, Args...&gt; more closely.
 To be honest, there is absolutely nothing magical about it, it just uses the default
 <code>SFINAE</code> construct to check if the given type(-expression) is valid.
-But using it amazes me everytime, since it strips away the need to write all the boring
+But using it amazes me everytime since it strips away the need to write all the boring
 boiler plate and instead lets us test super easily at compile time if a
 given expression (or in this case: typedef, but this can be used to check for expressions
 via decltype) is valid. This shows again the true power of template meta programming
@@ -140,8 +140,8 @@ at which the compiler is required or able to evaluate expressions.</p>
 When writing unit tests on some small linear algebra templates in C++ I thought about
 how to assure that expressions <strong>don’t</strong> compile.
 The same way I want that <code>Vec3f{} + Vec3f{}</code> compiles and has the correct semantics, I
-want to make sure <code>Vec3f{} + Mat4f{}</code> does never compile, since that would not make any
-sense (but happens faster than think when working with template operators).</p>
+want to make sure <code>Vec3f{} + Mat4f{}</code> does never compile since that would not make any
+sense (but happens faster than you'd think when working with template operators).</p>
 
 <p>With the little <em>magic</em> above this is super easy:</p>
 
@@ -157,8 +157,8 @@ idea to implement <code>operator+</code> for vector and matrix or gets so tangle
 templated operators that this would actually compile to some weird bullshit.</p>
 	
 
-	<p><b>Edit:</b> As a reddit user has <a href="https://www.reddit.com/r/cpp/comments/6bhn1g/validexpressionexpr_args_compiletime_expression/dhmn7bo/"> pointed out </a>, this is actually already part of the experimental
-		standard library and known as the <a href="http://en.cppreference.com/w/cpp/experimental/is_detected"> detection idiom, </a> so we might see it in the
+	<p><b>Edit:</b> As a user on reddit has pointed out, this is actually already part of the experimental
+		standard library and known as the <a href="http://en.cppreference.com/w/cpp/experimental/is_detected">detection idiom</a> so we might see it in the
 		next C++ standard (in a few years). </p>
 <br />
 <p><em>Tuesday, 16.05.2017, by nyorain</em></p>
