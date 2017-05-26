@@ -155,7 +155,11 @@ sense (but happens faster than think when working with template operators).</p>
 <p>That's it. The unit test will fail at compile time if someone thinks it would be a good
 idea to implement <code>operator+</code> for vector and matrix or gets so tangled up in some
 templated operators that this would actually compile to some weird bullshit.</p>
+	
 
+	<p><b>Edit:</b> As a reddit user has <a href="https://www.reddit.com/r/cpp/comments/6bhn1g/validexpressionexpr_args_compiletime_expression/dhmn7bo/"> pointed out </a>, this is actually already part of the experimental
+		standard library and known as the <a href="http://en.cppreference.com/w/cpp/experimental/is_detected"> detection idiom, </a> so we might see it in the
+		next C++ standard (in a few years). </p>
 <br />
 <p><em>Tuesday, 16.05.2017, by nyorain</em></p>
 <hr />
