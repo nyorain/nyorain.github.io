@@ -1,0 +1,112 @@
+body {
+	font-family: "Helvetica", sans-serif;
+	line-height: 1.5;
+	margin: 0;
+	padding: 0;
+	color: #666;
+	tab-size: 4;
+}
+
+main {
+	margin: 0 auto;
+	max-width: 55em;
+  	padding: 1em;
+}
+
+header {
+	background-color: #111144;
+	background-image: url("header-forest.jpg");
+	background-position: 50% 60%;
+	background-repeat: no-repeat;
+	background-size: cover;
+	padding-left: 2em;
+	padding-right: 2em;
+	padding-top: 5vh;
+	padding-bottom: 10vh;
+	text-align: center;
+	border-bottom: 2px solid #6699e0;
+	color: #ccc;
+}
+
+h1, h2 {
+	color: #333;
+	margin-top: 1.5em;
+	margin-bottom: 1em;
+}
+
+strong {
+	color: #668;
+}
+
+code {
+	color: #A55;
+	padding: 2px;
+}
+
+pre {
+	background: #ddddf9;
+	padding: 1em;
+	border: 2px solid #ccf;
+	margin: 3em 0em 3em 0em;
+	overflow-x: auto;
+}
+
+.language-cpp {
+	color: #666;
+	font-weight: normal;
+	font-style: normal;
+}
+
+a {
+	color: #2266e0;
+}
+
+header h1 {
+	color: #fff;
+	font-weight: 400;
+	text-shadow: 2px 1px #333333;
+	font-size: calc(1.5em + 1vw);
+}
+
+
+.hljs-comment {
+	color: #999;
+	font-style: italic;
+}
+
+.hljs-keyword {
+	color: #995599;
+}
+
+.hljs-built_in {
+	color: #31a8aa;
+}
+
+.hljs-number {
+ 	color: #3164aa;
+}
+
+.hljs-title {
+ 	color: #559966;
+}
+
+.hljs-function {
+	color: #555599;
+}
+
+.comment {
+	color: #999;
+	font-style: italic;
+}
+
+.keyword {
+	color: #995599;
+}
+
+.name {
+ 	color: #559966;
+}
+
+.type {
+ 	color: #3164aa;
+}
