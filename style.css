@@ -6,6 +6,9 @@ body {
 	margin: 0 auto;
 	max-width: 48em;
   	padding: 1em;
+
+	word-wrap: break-word;
+	overflow-wrap: break-word;
 }
 
 /* give strong (markdown bold) marks a color accent */

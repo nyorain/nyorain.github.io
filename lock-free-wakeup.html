@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="" xml:lang="">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>Reliable lock-free thread wakeup</title>
+  <style>
+      code{white-space: pre-wrap;}
+      span.smallcaps{font-variant: small-caps;}
+      span.underline{text-decoration: underline;}
+      div.column{display: inline-block; vertical-align: top; width: 50%;}
+  </style>
+  <style>
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+  </style>
+  <link rel="stylesheet" href="style.css" />
+  <!--[if lt IE 9]>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/html5shiv/3.7.3/html5shiv-printshiv.min.js"></script>
+  <![endif]-->
+</head>
+<body>
+<header id="title-block-header">
+<h1 class="title">Reliable lock-free thread wakeup</h1>
+<p class="date">07. December 2019</p>
+</header>
+<p>Or: single lock-free producer, single blocking consumer communication. While writing the <a href="https://github.com/kinetiknz/cubeb/pull/559">AAudio backend</a> for the cubeb library I came across an interesting multithreaded problem. I’m no expert on multithreading and couldn’t find a solution on the internet - maybe because I’m just not knowing the problem’s name? - so solving this on my own was exciting.</p>
+<h2 id="the-problem">The problem:</h2>
+<p>To achieve the best audio latency, we register a callback with AAudio in which we render sounds or process input from the microphone. This callback will then be called from a high priority thread that AAudio manages. The catch: since we are working with potentially really low latencies, we don’t have a whole lot of time to process or output the data. The AAudio docs explicitly state that this callback <strong>must not</strong> block. Not even for locking a mutex. Using lock-free primitives is quite common when programming the bare bones of an audio engine and I’m already used to that but the situation we have to integrate this with cubeb is somewhat more complicated.</p>
+<p>We forward the callback that AAudio triggers in the audio thread to the user of the cubeb library. The user-supplied callback is allowed to signal via its return value that the stream should be drained (i.e. stopped when all data that was already buffered has been output). AAudio has a matching interface: <code>AAudioStream_requestStop</code>. This function outputs all remaining data for an output stream and then stops the stream. Nice, isn’t it? Almost. Cubeb furthermore states that the backend will call a user-supplied state callback as soon as the draining is complete. AAudio, on the other hand, has no mechanism to notify us when a stream is drained, i.e. stopped. We can just manually block for a state change using <code>AAudioStream_waitForStageChange</code>. Additionally, AAudio states that the audio callback itself <strong>must not</strong> call <code>AAudioStream_requestStop</code> but instead leave this to another thread. So, obviously: we need another worker thread that does all this for us. But we don’t want to start a thread per stream and we additionally have no way to wake up <code>AAudioStream_waitForStageChange</code>. My <a href="https://github.com/kinetiknz/cubeb/pull/559/commits/dfecca4279693a4fd60cff2b210d58a8e3973e1a#diff-dac779abe308bc2d429483dd37c8adceR327">first solution</a> was to just check all streams over and over again for state changes or stop requests (when draining) with a sleeping time of 5 milliseconds in between. That worked well. But this is inefficient, especially if you consider that most applications don’t care much for stream draining - or even state changes at all. With that we arrive at the problem: we want to communicate from the realtime audio thread - that must not block under any circumstances - with the consumer thread - that should sleep, i.e. block as long as there isn’t anything to do or wait upon. This could be generalized to a single lock-free producer, single blocking consumer queue. Or the problem of waking up a thread reliably without the chance of blocking in the thread that initiates the wakeup.</p>
+<h2 id="shouldnt-be-too-hard-right">Shouldn’t be too hard, right?</h2>
+<p>So, spin up a mutex and take the condition variables out of your closet. We can quickly come up with a first trivial solution (leaving out details like joining logic or the actual work to be done):</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb1-1"><a href="#cb1-1"></a>mutex mutex;</span>
+<span id="cb1-2"><a href="#cb1-2"></a>condition_variable cv;</span>
+<span id="cb1-3"><a href="#cb1-3"></a></span>
+<span id="cb1-4"><a href="#cb1-4"></a><span class="co">// This function is called from the AAudio-managed realtime thread.</span></span>
+<span id="cb1-5"><a href="#cb1-5"></a><span class="co">// It can be seen as producer. It must not block.</span></span>
+<span id="cb1-6"><a href="#cb1-6"></a>audio_callback {</span>
+<span id="cb1-7"><a href="#cb1-7"></a>    <span class="co">// output audio data...</span></span>
+<span id="cb1-8"><a href="#cb1-8"></a>    <span class="co">// when we change the stream state:</span></span>
+<span id="cb1-9"><a href="#cb1-9"></a>    cv.notify_one();</span>
+<span id="cb1-10"><a href="#cb1-10"></a>}</span>
+<span id="cb1-11"><a href="#cb1-11"></a></span>
+<span id="cb1-12"><a href="#cb1-12"></a><span class="co">// This is the thread that should only get active when there is something</span></span>
+<span id="cb1-13"><a href="#cb1-13"></a><span class="co">// to do. It can be seen as consumer.</span></span>
+<span id="cb1-14"><a href="#cb1-14"></a>consumer {</span>
+<span id="cb1-15"><a href="#cb1-15"></a>    unique_lock lock(mutex):</span>
+<span id="cb1-16"><a href="#cb1-16"></a>    <span class="cf">while</span>(<span class="kw">true</span>) {</span>
+<span id="cb1-17"><a href="#cb1-17"></a>        cv.wait(lock);</span>
+<span id="cb1-18"><a href="#cb1-18"></a>        <span class="co">// check for state changes or things to do</span></span>
+<span id="cb1-19"><a href="#cb1-19"></a>        <span class="co">// process everything there is to do</span></span>
+<span id="cb1-20"><a href="#cb1-20"></a>    }</span>
+<span id="cb1-21"><a href="#cb1-21"></a>}</span></code></pre></div>
+<p>The mutex we just need for waiting on the condition variable is somewhat useless, right? After a small crisis on my understanding of what condition variables are at all anyhow, I came across a <a href="https://stackoverflow.com/questions/2763714">great stackoverflow question and explanation</a>. The main magic in a condition variable is just that it can unlock a mutex and go to sleep <strong>atomically</strong>. There can’t be anything in between. So I already suspected that not using the mutex anywhere else above was a bad sign regarding my use of the condition variable. Where’s the issue? what could go wrong? Well, the consumer thread could miss signals and go to sleep even though there is still something to do. Imagine this: <code>cv.notify_one()</code> is called just as the consumer is about to go asleep. The signal will not have any effect since the consumer isn’t sleeping yet. But immediately after this, the consumer will go to sleep even though there is still work to do. And it’s not guaranteed to wake up in finite time again.</p>
+<p>Later on, I found a <a href="https://stackoverflow.com/questions/21414933/c11-non-blocking-producer-consumer">stackoverflow question</a> asking pretty much precisely for what I need. It has one answer that seriously tries to solve the given problem - from Jonathan Wakely, an libstdc++ author -<br />
+and gives more or less the solution presented above. But in the following discussion, they found its problems as well without pursuing alternative options.</p>
+<p>I thought of various ways this could be solved - with additional atomic flags, an additional mutex on which the audio thread always just calls <code>try_lock</code> or with a second condition variable. But it all boils down to the same situation: when the consumer thread is about to go asleep, there’s just nothing the realtime thread can do about it. It could wait until the consumer thread really is asleep and then signal the condition variable, but that involves waiting again (and the common way do to so would be to use the mutex).</p>
+<h2 id="the-solution">The solution</h2>
+<p>All these failing thought paths finally lead me to the solution: what if we just spin up another thread that is used for exactly this situation? A thread that must be sleeping when the consumer thread is active and that will simply echo the condition variable notification as soon as the consuming thread is sleeping. How to achieve this? Let’s make use of the previously unused mutex! We already acquire the mutex when the consumer thread is active, let’s acquire the mutex in the new helper thread as well. I called this new helper thread <code>notifier</code>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb2-1"><a href="#cb2-1"></a><span class="co">// This is the helper thread that echoes the condition variable notification</span></span>
+<span id="cb2-2"><a href="#cb2-2"></a><span class="co">// when that is needed.</span></span>
+<span id="cb2-3"><a href="#cb2-3"></a>notifier {</span>
+<span id="cb2-4"><a href="#cb2-4"></a>    unique_lock(mutex);</span>
+<span id="cb2-5"><a href="#cb2-5"></a>    <span class="cf">while</span>(<span class="kw">true</span>) {</span>
+<span id="cb2-6"><a href="#cb2-6"></a>        cv.wait(lock);</span>
+<span id="cb2-7"><a href="#cb2-7"></a>        cv.notify_one();</span>
+<span id="cb2-8"><a href="#cb2-8"></a>    }</span>
+<span id="cb2-9"><a href="#cb2-9"></a>}</span></code></pre></div>
+<p>And that’s it. We just need to add the notifier thread and without any other modifications, the consumer can’t miss signals anymore. I initially started with a <code>cv.notify_all()</code> in the realtime (producer) thread, but that’s not really needed. So, why does this work?</p>
+<p>At <strong>any</strong> time (after the initial setup; i.e. after both threads reached <code>cv.wait(lock)</code> for the first time) at least one of <code>notifier</code> or <code>consumer</code> must be sleeping (i.e. waiting on <code>cv</code>) because when they are not sleeping, they own the locked <code>mutex</code>. That’s where we finally use the real condition variable magic. What happens if the realtime (producer) thread calls <code>cv.notify_one()</code>? If only the consumer thread is sleeping, it will eventually be woken up by the notification. When the consumer thread is currently active on the other hand - even if it’s about to go asleep without anything else in between - the notifier thread <strong>must</strong> be currently sleeping since the mutex is still locked. And it will wake up as soon as the consumer thread is going to sleep. And then it will wake up the state thread via the echoed notification. When both threads are waiting on the condition variable, one of them will wake up. And even if this is the notifier thread: it will just echo the notification and wake up the consumer thread with that echo.</p>
+<p>The example we are building is quite prone to spurious wakeups - waiting on a condition variable without an external condition is usually a bad idea - but we can fix that as well:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode cpp"><code class="sourceCode cpp"><span id="cb3-1"><a href="#cb3-1"></a>mutex mutex;</span>
+<span id="cb3-2"><a href="#cb3-2"></a>condition_variable cv;</span>
+<span id="cb3-3"><a href="#cb3-3"></a>atomic&lt;<span class="dt">bool</span>&gt; wakeup {<span class="kw">false</span>};</span>
+<span id="cb3-4"><a href="#cb3-4"></a></span>
+<span id="cb3-5"><a href="#cb3-5"></a><span class="co">// This function is called from the AAudio-managed realtime thread.</span></span>
+<span id="cb3-6"><a href="#cb3-6"></a><span class="co">// It can be seen as producer. It must not block.</span></span>
+<span id="cb3-7"><a href="#cb3-7"></a>audio_callback {</span>
+<span id="cb3-8"><a href="#cb3-8"></a>    <span class="co">// output audio data...</span></span>
+<span id="cb3-9"><a href="#cb3-9"></a>    <span class="co">// when we change the stream state:</span></span>
+<span id="cb3-10"><a href="#cb3-10"></a>    wakeup.store(<span class="kw">true</span>);</span>
+<span id="cb3-11"><a href="#cb3-11"></a>    cv.notify_one();</span>
+<span id="cb3-12"><a href="#cb3-12"></a>}</span>
+<span id="cb3-13"><a href="#cb3-13"></a></span>
+<span id="cb3-14"><a href="#cb3-14"></a><span class="co">// This is the thread that should only get active when there is something</span></span>
+<span id="cb3-15"><a href="#cb3-15"></a><span class="co">// to do. It can be seen as consumer.</span></span>
+<span id="cb3-16"><a href="#cb3-16"></a>consumer {</span>
+<span id="cb3-17"><a href="#cb3-17"></a>    unique_lock lock(mutex):</span>
+<span id="cb3-18"><a href="#cb3-18"></a>    <span class="cf">while</span>(<span class="kw">true</span>) {</span>
+<span id="cb3-19"><a href="#cb3-19"></a>        cv.wait(lock);</span>
+<span id="cb3-20"><a href="#cb3-20"></a>        <span class="cf">while</span>(wakeup.load()) {</span>
+<span id="cb3-21"><a href="#cb3-21"></a>            wakeup.store(<span class="kw">false</span>);</span>
+<span id="cb3-22"><a href="#cb3-22"></a>            <span class="co">// check for state changes or things to do</span></span>
+<span id="cb3-23"><a href="#cb3-23"></a>            <span class="co">// process everything there is to do</span></span>
+<span id="cb3-24"><a href="#cb3-24"></a>        }</span>
+<span id="cb3-25"><a href="#cb3-25"></a>    }</span>
+<span id="cb3-26"><a href="#cb3-26"></a>}</span>
+<span id="cb3-27"><a href="#cb3-27"></a></span>
+<span id="cb3-28"><a href="#cb3-28"></a><span class="co">// This is the helper thread that echoes the condition variable notification</span></span>
+<span id="cb3-29"><a href="#cb3-29"></a><span class="co">// when that is needed.</span></span>
+<span id="cb3-30"><a href="#cb3-30"></a>notifier {</span>
+<span id="cb3-31"><a href="#cb3-31"></a>    unique_lock(mutex);</span>
+<span id="cb3-32"><a href="#cb3-32"></a>    <span class="cf">while</span>(<span class="kw">true</span>) {</span>
+<span id="cb3-33"><a href="#cb3-33"></a>        cv.wait(lock);</span>
+<span id="cb3-34"><a href="#cb3-34"></a>        <span class="cf">if</span>(wakeup.load()) {</span>
+<span id="cb3-35"><a href="#cb3-35"></a>            cv.notify_one();</span>
+<span id="cb3-36"><a href="#cb3-36"></a>        }</span>
+<span id="cb3-37"><a href="#cb3-37"></a>    }</span>
+<span id="cb3-38"><a href="#cb3-38"></a>}</span></code></pre></div>
+<h2 id="problems">Problems?</h2>
+<p>This solution has some costs: you need a completely new separate thread. This might be a dealbreaker for some situations. And for some wakeups, you get the overhead of a wrong thread being woken up first. But especially in cases where wakeups should not be needed too often - as it can be expected to be the case for my original case, the AAudio cubeb backend - this is better than just checking in a loop with a fixed time spent sleeping in between.</p>
+</body>
+</html>
